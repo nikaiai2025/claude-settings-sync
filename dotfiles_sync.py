@@ -3,9 +3,10 @@ import hashlib
 import os
 import shutil
 import socket
+import subprocess
 from dataclasses import dataclass
 from datetime import datetime
-from difflib import SequenceMatcher
+from difflib import SequenceMatcher, unified_diff
 from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
 
@@ -156,6 +157,30 @@ def backup_files(files: Iterable[Tuple[Path, Path]]) -> Path:
     return backup_root
 
 
+def show_diffs(claude_root: Path, diff_items: List[FileStatus]) -> None:
+    if not diff_items:
+        return
+
+    local_map = collect_local_files(claude_root)
+    repo_map = collect_repo_files(DATA_ROOT)
+
+    for s in diff_items:
+        local_path = local_map[s.rel_path]
+        repo_path = repo_map[s.rel_path]
+        local_lines = read_text_lines(local_path)
+        repo_lines = read_text_lines(repo_path)
+        diff = unified_diff(
+            repo_lines,
+            local_lines,
+            fromfile=f"repo/{s.rel_path}",
+            tofile=f"local/{s.rel_path}",
+            lineterm="",
+        )
+        print(f"\n=== DIFF {s.rel_path} ({s.similarity}) ===")
+        for line in diff:
+            print(line)
+
+
 def cmd_status(claude_root: Path) -> int:
     statuses = get_status(claude_root)
     if not statuses:
@@ -168,18 +193,14 @@ def cmd_status(claude_root: Path) -> int:
         else:
             print(f"{s.status:11} {s.rel_path}")
 
-    return 0
-
-
-def cmd_diff(claude_root: Path) -> int:
-    statuses = get_status(claude_root)
     diff_items = [s for s in statuses if s.status == "DIFF"]
     if not diff_items:
-        print("No DIFF files.")
         return 0
 
-    for s in diff_items:
-        print(f"DIFF {s.rel_path} ({s.similarity})")
+    answer = input("Show detailed DIFF for these files? (y/n): ").strip().lower()
+    if answer == "y":
+        show_diffs(claude_root, diff_items)
+
     return 0
 
 
@@ -202,7 +223,50 @@ def cmd_collect(claude_root: Path) -> int:
     return 0
 
 
-def cmd_apply(claude_root: Path) -> int:
+def run_git_commit_push() -> None:
+    def run(cmd: List[str]) -> subprocess.CompletedProcess:
+        return subprocess.run(cmd, cwd=REPO_ROOT, text=True, capture_output=True)
+
+    add = run(["git", "add", "data"])
+    if add.returncode != 0:
+        print("git add failed:")
+        print(add.stderr.strip())
+        return
+
+    status = run(["git", "status", "-sb"])
+    if status.returncode == 0 and "nothing to commit" in status.stdout:
+        print("Nothing to commit.")
+        return
+
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    commit = run(["git", "commit", "-m", f"Update Claude settings ({ts})"])
+    if commit.returncode != 0:
+        print("git commit failed:")
+        print(commit.stderr.strip())
+        return
+
+    push = run(["git", "push"])
+    if push.returncode != 0:
+        print("git push failed:")
+        print(push.stderr.strip())
+        return
+
+    print("Git add/commit/push completed.")
+
+def run_git_pull() -> bool:
+    pull = subprocess.run(["git", "pull"], cwd=REPO_ROOT, text=True, capture_output=True)
+    if pull.returncode != 0:
+        print("git pull failed:")
+        print(pull.stderr.strip())
+        return False
+    print("Git pull completed.")
+    return True
+
+
+def cmd_apply(claude_root: Path, skip_pull: bool) -> int:
+    if not skip_pull:
+        if not run_git_pull():
+            return 1
     statuses = get_status(claude_root)
     repo_map = collect_repo_files(DATA_ROOT)
 
@@ -240,10 +304,20 @@ def main() -> int:
         "--root",
         help="Claude settings root (overrides CLAUDE_HOME). Example: C:\\Users\\user\\.claude",
     )
+    parser.add_argument(
+        "--no-git",
+        action="store_true",
+        help="Skip git add/commit/push during collect.",
+    )
+    parser.add_argument(
+        "--no-pull",
+        action="store_true",
+        help="Skip git pull before apply.",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("status", help="Show status between local and repo.")
-    sub.add_parser("diff", help="Show DIFF files with line similarity.")
+    # diff command removed; status now supports optional detailed diff display
     sub.add_parser("collect", help="Copy LOCAL_ONLY + DIFF from local to repo.")
     sub.add_parser("apply", help="Copy REMOTE_ONLY + DIFF from repo to local (with backup).")
 
@@ -253,12 +327,13 @@ def main() -> int:
 
     if args.command == "status":
         return cmd_status(claude_root)
-    if args.command == "diff":
-        return cmd_diff(claude_root)
     if args.command == "collect":
-        return cmd_collect(claude_root)
+        rc = cmd_collect(claude_root)
+        if rc == 0 and not args.no_git:
+            run_git_commit_push()
+        return rc
     if args.command == "apply":
-        return cmd_apply(claude_root)
+        return cmd_apply(claude_root, args.no_pull)
 
     return 1
 

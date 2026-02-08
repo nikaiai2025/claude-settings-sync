@@ -25,7 +25,6 @@
 
 ```powershell
 python dotfiles_sync.py status
-python dotfiles_sync.py diff
 python dotfiles_sync.py collect
 python dotfiles_sync.py apply
 ```
@@ -40,18 +39,21 @@ python dotfiles_sync.py apply
    - `status`
    - `DIFF` があれば **collect**（ローカル → Git）で反映
 
-迷う場合は `diff` で一致率を見てから判断します。
+迷う場合は `status` 実行後に表示されるプロンプトで詳細差分を表示します。
 
 ## 各コマンドの挙動
 - `status`: `LOCAL_ONLY` / `REMOTE_ONLY` / `DIFF` / `SAME` を表示
   - `DIFF` は `70/100 lines identical` のような一致率付き
-- `diff`: `DIFF` のみ一覧表示（一致率付き）
 - `collect`: `LOCAL_ONLY + DIFF` を Git 側へ上書き
   - ローカルが正しいと判断した場合に使う
   - Git 履歴が残るためバックアップ不要
+  - 実行後に `git add/commit/push` を自動実行（コミットメッセージはタイムスタンプ）
+  - 自動 Git 操作を省略したい場合は `--no-git`
 - `apply`: `REMOTE_ONLY + DIFF` をローカルへ上書き
   - Git が正しいと判断した場合に使う
   - 上書き前にバックアップを作成
+  - 実行前に `git pull` を自動実行
+  - `git pull` を省略したい場合は `--no-pull`
 
 ## バックアップ（apply のみ）
 上書き前にローカルを退避:
