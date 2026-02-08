@@ -1,0 +1,267 @@
+import argparse
+import hashlib
+import os
+import shutil
+import socket
+from dataclasses import dataclass
+from datetime import datetime
+from difflib import SequenceMatcher
+from pathlib import Path
+from typing import Dict, Iterable, List, Tuple
+
+
+REPO_ROOT = Path(__file__).resolve().parent
+DATA_ROOT = REPO_ROOT / "data"
+BACKUP_ROOT = REPO_ROOT / "backups"
+
+TARGET_DIRS = ["Skills", "Agents"]
+TARGET_FILES = ["AGENTS.md", "settings.json"]
+
+
+def find_claude_root(explicit: str | None) -> Path:
+    if explicit:
+        return Path(explicit).expanduser()
+
+    env_root = os.environ.get("CLAUDE_HOME")
+    if env_root:
+        return Path(env_root).expanduser()
+
+    candidates = []
+    userprofile = os.environ.get("USERPROFILE")
+    if userprofile:
+        candidates.append(Path(userprofile) / ".claude")
+    homedrive = os.environ.get("HOMEDRIVE")
+    homepath = os.environ.get("HOMEPATH")
+    if homedrive and homepath:
+        candidates.append(Path(homedrive + homepath) / ".claude")
+
+    for c in candidates:
+        if c.exists():
+            return c
+
+    # Fall back to a reasonable default for Windows
+    return Path(r"C:\Users\user\.claude")
+
+
+@dataclass(frozen=True)
+class FileStatus:
+    rel_path: Path
+    status: str  # LOCAL_ONLY | REMOTE_ONLY | DIFF | SAME
+    similarity: str = ""
+
+
+def sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def read_text_lines(path: Path) -> List[str]:
+    with path.open("r", encoding="utf-8", errors="replace") as f:
+        return f.read().splitlines()
+
+
+def line_similarity(a_path: Path, b_path: Path) -> str:
+    a_lines = read_text_lines(a_path)
+    b_lines = read_text_lines(b_path)
+    matcher = SequenceMatcher(a=a_lines, b=b_lines)
+    identical = sum(block.size for block in matcher.get_matching_blocks())
+    total = max(len(a_lines), len(b_lines))
+    return f"{identical}/{total} lines identical" if total > 0 else "0/0 lines identical"
+
+
+def collect_local_files(root: Path) -> Dict[Path, Path]:
+    result: Dict[Path, Path] = {}
+
+    for d in TARGET_DIRS:
+        local_dir = root / d
+        if local_dir.exists():
+            for p in local_dir.rglob("*"):
+                if p.is_file():
+                    rel = p.relative_to(root)
+                    result[rel] = p
+
+    for f in TARGET_FILES:
+        p = root / f
+        if p.exists() and p.is_file():
+            result[p.relative_to(root)] = p
+
+    return result
+
+
+def collect_repo_files(root: Path) -> Dict[Path, Path]:
+    result: Dict[Path, Path] = {}
+    if not root.exists():
+        return result
+
+    for d in TARGET_DIRS:
+        repo_dir = root / d
+        if repo_dir.exists():
+            for p in repo_dir.rglob("*"):
+                if p.is_file():
+                    rel = p.relative_to(root)
+                    result[rel] = p
+
+    for f in TARGET_FILES:
+        p = root / f
+        if p.exists() and p.is_file():
+            result[p.relative_to(root)] = p
+
+    return result
+
+
+def get_status(claude_root: Path) -> List[FileStatus]:
+    local_map = collect_local_files(claude_root)
+    repo_map = collect_repo_files(DATA_ROOT)
+
+    all_paths = sorted(set(local_map.keys()) | set(repo_map.keys()))
+    statuses: List[FileStatus] = []
+
+    for rel in all_paths:
+        local = local_map.get(rel)
+        repo = repo_map.get(rel)
+        if local and not repo:
+            statuses.append(FileStatus(rel, "LOCAL_ONLY"))
+            continue
+        if repo and not local:
+            statuses.append(FileStatus(rel, "REMOTE_ONLY"))
+            continue
+        if local and repo:
+            if sha256_file(local) == sha256_file(repo):
+                statuses.append(FileStatus(rel, "SAME"))
+            else:
+                sim = line_similarity(local, repo)
+                statuses.append(FileStatus(rel, "DIFF", sim))
+    return statuses
+
+
+def ensure_parent(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+
+def copy_file(src: Path, dst: Path) -> None:
+    ensure_parent(dst)
+    shutil.copy2(src, dst)
+
+
+def backup_files(files: Iterable[Tuple[Path, Path]]) -> Path:
+    ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    host = socket.gethostname()
+    backup_root = BACKUP_ROOT / f"{ts}_{host}"
+    for rel, local_path in files:
+        backup_path = backup_root / rel
+        copy_file(local_path, backup_path)
+    return backup_root
+
+
+def cmd_status(claude_root: Path) -> int:
+    statuses = get_status(claude_root)
+    if not statuses:
+        print("No target files found in local or repo.")
+        return 0
+
+    for s in statuses:
+        if s.status == "DIFF":
+            print(f"{s.status:11} {s.rel_path} ({s.similarity})")
+        else:
+            print(f"{s.status:11} {s.rel_path}")
+
+    return 0
+
+
+def cmd_diff(claude_root: Path) -> int:
+    statuses = get_status(claude_root)
+    diff_items = [s for s in statuses if s.status == "DIFF"]
+    if not diff_items:
+        print("No DIFF files.")
+        return 0
+
+    for s in diff_items:
+        print(f"DIFF {s.rel_path} ({s.similarity})")
+    return 0
+
+
+def cmd_collect(claude_root: Path) -> int:
+    statuses = get_status(claude_root)
+    local_map = collect_local_files(claude_root)
+    DATA_ROOT.mkdir(parents=True, exist_ok=True)
+
+    to_copy: List[Tuple[Path, Path]] = []
+    for s in statuses:
+        if s.status in ("LOCAL_ONLY", "DIFF"):
+            src = local_map[s.rel_path]
+            dst = DATA_ROOT / s.rel_path
+            to_copy.append((src, dst))
+
+    for src, dst in to_copy:
+        copy_file(src, dst)
+
+    print(f"Collected {len(to_copy)} files into repo data/ (LOCAL_ONLY + DIFF).")
+    return 0
+
+
+def cmd_apply(claude_root: Path) -> int:
+    statuses = get_status(claude_root)
+    repo_map = collect_repo_files(DATA_ROOT)
+
+    to_backup: List[Tuple[Path, Path]] = []
+    to_copy: List[Tuple[Path, Path]] = []
+
+    for s in statuses:
+        if s.status == "DIFF":
+            local_path = claude_root / s.rel_path
+            to_backup.append((s.rel_path, local_path))
+            src = repo_map[s.rel_path]
+            dst = claude_root / s.rel_path
+            to_copy.append((src, dst))
+        elif s.status == "REMOTE_ONLY":
+            src = repo_map[s.rel_path]
+            dst = claude_root / s.rel_path
+            to_copy.append((src, dst))
+
+    if to_backup:
+        backup_root = backup_files(to_backup)
+        print(f"Backup created: {backup_root}")
+    else:
+        print("No backups created (no local files to overwrite).")
+
+    for src, dst in to_copy:
+        copy_file(src, dst)
+
+    print(f"Applied {len(to_copy)} files from repo data/ to local.")
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Sync Claude Code settings via Git repo.")
+    parser.add_argument(
+        "--root",
+        help="Claude settings root (overrides CLAUDE_HOME). Example: C:\\Users\\user\\.claude",
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    sub.add_parser("status", help="Show status between local and repo.")
+    sub.add_parser("diff", help="Show DIFF files with line similarity.")
+    sub.add_parser("collect", help="Copy LOCAL_ONLY + DIFF from local to repo.")
+    sub.add_parser("apply", help="Copy REMOTE_ONLY + DIFF from repo to local (with backup).")
+
+    args = parser.parse_args()
+
+    claude_root = find_claude_root(args.root)
+
+    if args.command == "status":
+        return cmd_status(claude_root)
+    if args.command == "diff":
+        return cmd_diff(claude_root)
+    if args.command == "collect":
+        return cmd_collect(claude_root)
+    if args.command == "apply":
+        return cmd_apply(claude_root)
+
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
