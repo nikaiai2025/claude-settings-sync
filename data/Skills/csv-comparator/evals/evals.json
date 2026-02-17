@@ -1,0 +1,92 @@
+{
+  "evals": [
+    {
+      "id": "eval-0",
+      "title": "基本動作: 値の差異検出",
+      "prompt": "Compare reference.csv and test.csv. Keys: id,date,category,item. Data: amount,tax_rate. Ignore: memo.",
+      "files": ["eval-0/reference.csv", "eval-0/test.csv"],
+      "expectations": [
+        "4 rows with value differences detected",
+        "0 missing rows, 0 extra rows",
+        "商品B amount: 2500 vs 2600 detected",
+        "商品D amount: 4200 vs 4200.0 detected (string comparison)",
+        "通信費 amount: 3300 vs 3350 detected"
+      ]
+    },
+    {
+      "id": "eval-1",
+      "title": "行の欠損・追加",
+      "prompt": "Compare reference.csv and test.csv. Keys: id,date,category,item. Data: amount,tax_rate. Ignore: memo.",
+      "files": ["eval-1/reference.csv", "eval-1/test.csv"],
+      "expectations": [
+        "2 rows only in reference (id=3, id=8)",
+        "2 rows only in test (id=11, id=12)",
+        "Row count mismatch reported: reference 10, test 10",
+        "0 value differences in matched rows"
+      ]
+    },
+    {
+      "id": "eval-2",
+      "title": "重複キー検知",
+      "prompt": "Compare reference.csv and test.csv. Keys: id,date,category,item. Data: amount,tax_rate. Ignore: memo.",
+      "files": ["eval-2/reference.csv", "eval-2/test.csv"],
+      "expectations": [
+        "2 duplicate keys detected in test file",
+        "Duplicate key for id=3 (原料X) reported",
+        "Duplicate key for id=7 (商品D) reported",
+        "Errors section is non-empty"
+      ]
+    },
+    {
+      "id": "eval-3",
+      "title": "特殊文字 (パイプ・全角スペース・タブ・クォート)",
+      "prompt": "Compare reference.csv and test.csv. Keys: id,date,category,item. Data: amount,tax_rate. Ignore: memo.",
+      "files": ["eval-3/reference.csv", "eval-3/test.csv"],
+      "expectations": [
+        "Pipe character in key does not break comparison",
+        "Tab character in key does not break comparison",
+        "Double quote in key does not break comparison",
+        "3 value differences detected",
+        "Markdown table renders correctly (pipes escaped)"
+      ]
+    },
+    {
+      "id": "eval-4",
+      "title": "完全一致 (行順シャッフル)",
+      "prompt": "Compare reference.csv and test.csv. Keys: id,date,category,item. Data: amount,tax_rate. Ignore: memo.",
+      "files": ["eval-4/reference.csv", "eval-4/test.csv"],
+      "expectations": [
+        "0 rows with differences",
+        "0 missing rows, 0 extra rows",
+        "0 duplicate keys",
+        "Match rate 100%",
+        "Report states all matched rows are identical"
+      ]
+    },
+    {
+      "id": "eval-5",
+      "title": "複数テスト対象 (1 ref vs 2 tests)",
+      "prompt": "Compare reference.csv against test_a.csv and test_b.csv. Keys: id,date,category,item. Data: amount,tax_rate. Ignore: memo.",
+      "files": ["eval-5/reference.csv", "eval-5/test_a.csv", "eval-5/test_b.csv"],
+      "expectations": [
+        "Summary table has columns for both test_a and test_b",
+        "test_a: 2 rows with diffs, 0 missing, 0 extra",
+        "test_b: 2 rows with diffs, 1 missing, 0 extra",
+        "Separate detail sections for each test file"
+      ]
+    },
+    {
+      "id": "eval-6",
+      "title": "実データ (日計表OCRサンプル)",
+      "prompt": "Compare reference.csv (normal1) and test.csv (many1). Keys: pageNum,category,label. Data: Date,amount,tax_rate. Ignore: checksum.",
+      "files": ["eval-6/reference.csv", "eval-6/test.csv"],
+      "expectations": [
+        "Report is generated without errors",
+        "Duplicate keys detected in both files",
+        "Large number of ref-only and test-only rows (label differences from OCR)",
+        "Value differences section is populated",
+        "Japanese characters render correctly"
+      ]
+    }
+  ]
+}
