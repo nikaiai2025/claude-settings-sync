@@ -40,8 +40,7 @@ def find_claude_root(explicit: str | None) -> Path:
         if c.exists():
             return c
 
-    # Fall back to a reasonable default for Windows
-    return Path(r"C:\Users\user\.claude")
+    return Path.home() / ".claude"
 
 
 @dataclass(frozen=True)
@@ -188,6 +187,8 @@ def cmd_status(claude_root: Path) -> int:
         return 0
 
     for s in statuses:
+        if s.status == "SAME":
+            continue
         if s.status == "DIFF":
             print(f"{s.status:11} {s.rel_path} ({s.similarity})")
         else:
@@ -227,15 +228,19 @@ def run_git_commit_push() -> None:
     def run(cmd: List[str]) -> subprocess.CompletedProcess:
         return subprocess.run(cmd, cwd=REPO_ROOT, text=True, capture_output=True)
 
-    add = run(["git", "add", "data"])
+    add = run(["git", "add", "-A", "--", "data"])
     if add.returncode != 0:
         print("git add failed:")
         print(add.stderr.strip())
         return
 
-    status = run(["git", "status", "-sb"])
-    if status.returncode == 0 and "nothing to commit" in status.stdout:
+    staged = run(["git", "diff", "--cached", "--quiet", "--", "data"])
+    if staged.returncode == 0:
         print("Nothing to commit.")
+        return
+    if staged.returncode != 1:
+        print("git diff --cached failed:")
+        print(staged.stderr.strip())
         return
 
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -298,6 +303,52 @@ def cmd_apply(claude_root: Path, skip_pull: bool) -> int:
     return 0
 
 
+def remove_empty_dirs_upward(path: Path, stop_at: Path) -> None:
+    current = path.parent
+    while current != stop_at and stop_at in current.parents:
+        try:
+            current.rmdir()
+        except OSError:
+            break
+        current = current.parent
+
+
+def cmd_delete_remote(claude_root: Path) -> int:
+    statuses = get_status(claude_root)
+    repo_map = collect_repo_files(DATA_ROOT)
+
+    to_remove: List[Tuple[Path, Path]] = []
+    for s in statuses:
+        if s.status == "REMOTE_ONLY":
+            repo_path = repo_map.get(s.rel_path)
+            if repo_path:
+                to_remove.append((s.rel_path, repo_path))
+
+    if not to_remove:
+        print("No REMOTE_ONLY files to delete from repo data/.")
+        return 2
+
+    print("Delete target files from repo data/ (REMOTE_ONLY):")
+    for rel, _ in to_remove:
+        print(f"- {rel}")
+    print(f"Total: {len(to_remove)}")
+
+    answer = input("Proceed with deletion? (y/n): ").strip().lower()
+    if answer != "y":
+        print("Cancelled.")
+        return 2
+
+    removed = 0
+    for _, repo_path in to_remove:
+        if repo_path.exists() and repo_path.is_file():
+            repo_path.unlink()
+            remove_empty_dirs_upward(repo_path, DATA_ROOT)
+            removed += 1
+
+    print(f"Deleted {removed} REMOTE_ONLY files from repo data/.")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Sync Claude Code settings via Git repo.")
     parser.add_argument(
@@ -318,8 +369,12 @@ def main() -> int:
 
     sub.add_parser("status", help="Show status between local and repo.")
     # diff command removed; status now supports optional detailed diff display
-    sub.add_parser("collect", help="Copy LOCAL_ONLY + DIFF from local to repo.")
-    sub.add_parser("apply", help="Copy REMOTE_ONLY + DIFF from repo to local (with backup).")
+    sub.add_parser("local_to_git", help="Copy LOCAL_ONLY + DIFF from local to repo.")
+    sub.add_parser("git_to_local", help="Copy REMOTE_ONLY + DIFF from repo to local (with backup).")
+    sub.add_parser(
+        "delete_remote",
+        help="Delete REMOTE_ONLY files from repo data/ (maintenance, with confirmation).",
+    )
 
     args = parser.parse_args()
 
@@ -327,13 +382,18 @@ def main() -> int:
 
     if args.command == "status":
         return cmd_status(claude_root)
-    if args.command == "collect":
+    if args.command == "local_to_git":
         rc = cmd_collect(claude_root)
         if rc == 0 and not args.no_git:
             run_git_commit_push()
         return rc
-    if args.command == "apply":
+    if args.command == "git_to_local":
         return cmd_apply(claude_root, args.no_pull)
+    if args.command == "delete_remote":
+        rc = cmd_delete_remote(claude_root)
+        if rc == 0 and not args.no_git:
+            run_git_commit_push()
+        return rc
 
     return 1
 
