@@ -11,7 +11,8 @@
 - `Skills\`
 - `Agents\`
 - `AGENTS.md`
-- `settings.json`（MCP 設定）
+
+※ `settings.json` はマシン固有の設定が含まれるため同期対象外です。
 
 ## ルート解決（.claude の場所）
 以下の順で決定します:

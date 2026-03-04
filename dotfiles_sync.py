@@ -16,7 +16,7 @@ DATA_ROOT = REPO_ROOT / "data"
 BACKUP_ROOT = REPO_ROOT / "backups"
 
 TARGET_DIRS = ["Skills", "Agents"]
-TARGET_FILES = ["AGENTS.md", "settings.json"]
+TARGET_FILES = ["AGENTS.md"]
 
 
 def find_claude_root(explicit: str | None) -> Path:
@@ -79,7 +79,7 @@ def collect_local_files(root: Path) -> Dict[Path, Path]:
         local_dir = root / d
         if local_dir.exists():
             for p in local_dir.rglob("*"):
-                if p.is_file():
+                if p.is_file() and "__pycache__" not in p.parts:
                     rel = p.relative_to(root)
                     result[rel] = p
 
@@ -100,7 +100,7 @@ def collect_repo_files(root: Path) -> Dict[Path, Path]:
         repo_dir = root / d
         if repo_dir.exists():
             for p in repo_dir.rglob("*"):
-                if p.is_file():
+                if p.is_file() and "__pycache__" not in p.parts:
                     rel = p.relative_to(root)
                     result[rel] = p
 

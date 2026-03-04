@@ -1,7 +1,7 @@
 # 設計: Claude Code 設定のGit同期フロー
 
 ## 目的
-複数端末に散在する Claude Code の設定（Skills/Agents/AGENTS.md/settings.json）を Git で一元管理し、
+複数端末に散在する Claude Code の設定（Skills/Agents/AGENTS.md）を Git で一元管理し、
 ローカル更新の消滅を防ぎながら安全に同期する。
 
 ## 管理対象（Windows固定）
@@ -9,7 +9,9 @@
 - `Skills\`（フォルダ）
 - `Agents\`（フォルダ）
 - `AGENTS.md`（ファイル）
-- `settings.json`（MCP 設定）
+
+※ `settings.json` はマシン固有の設定が含まれるため、同期対象外とする。
+※ `__pycache__` ディレクトリおよびその中身は、同期対象外とする。
 
 ## ルート解決ルール（.claude の場所が端末で違う場合）
 優先順で決定する:
@@ -26,13 +28,11 @@ repo/
     Skills/
     Agents/
     AGENTS.md
-    settings.json
   backups/
     2026-02-08_143012_HOSTNAME/
       Skills/
       Agents/
       AGENTS.md
-      settings.json
 ```
 
 ## 同期の基本方針
@@ -45,7 +45,7 @@ repo/
 ### 1. status（確認）
 目的: ローカルと Git の差分を可視化
 - `Skills/`, `Agents/` 配下のファイル単位でハッシュ比較
-- `AGENTS.md`, `settings.json` は全文ハッシュ比較
+- `AGENTS.md` は全文ハッシュ比較
 - 結果を次の3種に分類
   - `LOCAL_ONLY`: 同一パスのファイルがローカルにのみ存在
   - `REMOTE_ONLY`: 同一パスのファイルが Git にのみ存在
