@@ -268,10 +268,9 @@ def run_git_pull() -> bool:
     return True
 
 
-def cmd_apply(claude_root: Path, skip_pull: bool) -> int:
-    if not skip_pull:
-        if not run_git_pull():
-            return 1
+def cmd_apply(claude_root: Path) -> int:
+    if not run_git_pull():
+        return 1
     statuses = get_status(claude_root)
     repo_map = collect_repo_files(DATA_ROOT)
 
@@ -355,16 +354,6 @@ def main() -> int:
         "--root",
         help="Claude settings root (overrides CLAUDE_HOME). Example: C:\\Users\\user\\.claude",
     )
-    parser.add_argument(
-        "--no-git",
-        action="store_true",
-        help="Skip git add/commit/push during collect.",
-    )
-    parser.add_argument(
-        "--no-pull",
-        action="store_true",
-        help="Skip git pull before apply.",
-    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("status", help="Show status between local and repo.")
@@ -384,14 +373,14 @@ def main() -> int:
         return cmd_status(claude_root)
     if args.command == "local_to_git":
         rc = cmd_collect(claude_root)
-        if rc == 0 and not args.no_git:
+        if rc == 0:
             run_git_commit_push()
         return rc
     if args.command == "git_to_local":
-        return cmd_apply(claude_root, args.no_pull)
+        return cmd_apply(claude_root)
     if args.command == "delete_remote":
         rc = cmd_delete_remote(claude_root)
-        if rc == 0 and not args.no_git:
+        if rc == 0:
             run_git_commit_push()
         return rc
 

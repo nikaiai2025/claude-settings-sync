@@ -73,7 +73,6 @@ repo/
 - 付随処理
   - `collect` 後に `git add/commit/push` を自動実行
   - コミットメッセージはタイムスタンプ
-  - 自動 Git 操作を省略する場合は `--no-git`
 - 効果: ローカルが正と判断した場合に確実に Git を更新できる
 
 ### 3. apply（Git → ローカル）
@@ -85,7 +84,6 @@ repo/
   - 判断を誤った場合に備え **必ずバックアップを作成**
 - 付随処理
   - `apply` 前に `git pull` を自動実行
-  - `git pull` を省略する場合は `--no-pull`
 - 実行時のバックアップ
   - 上書き対象ファイルを `backups/<timestamp>_<hostname>/` に保存
 - 反映

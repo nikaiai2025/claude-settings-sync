@@ -51,17 +51,14 @@ python dotfiles_sync.py delete_remote
   - ローカルが正しいと判断した場合に使う
   - Git 履歴が残るためバックアップ不要
   - 実行後に `git add/commit/push` を自動実行（コミットメッセージはタイムスタンプ）
-  - 自動 Git 操作を省略したい場合は `--no-git`
 - `git_to_local`: `REMOTE_ONLY + DIFF` をローカルへ上書き
   - Git が正しいと判断した場合に使う
   - 上書き前にバックアップを作成
   - 実行前に `git pull` を自動実行
-  - `git pull` を省略したい場合は `--no-pull`
 - `delete_remote`（メンテナンス用）: `REMOTE_ONLY` を `data/` から削除
   - 通常運用では使わない（不要ファイル整理時のみ）
   - 実行時に削除対象ファイル一覧を表示し、`y/n` で確認
   - 実行後に `git add/commit/push` を自動実行
-  - 自動 Git 操作を省略したい場合は `--no-git`
 
 ## バックアップ（git_to_local のみ）
 上書き前にローカルを退避:
