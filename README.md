@@ -11,6 +11,7 @@
 - `Skills\`
 - `Agents\`
 - `AGENTS.md`
+- `CLAUDE.md`
 
 ※ `settings.json` はマシン固有の設定が含まれるため同期対象外です。
 
