@@ -18,4 +18,3 @@
 ## 主要コマンド
 - **テスト実行:** `uv run pytest`
 - **フロントエンド起動:** `npm run dev`
-- **環境の完全再構築:** `rm -rf .venv && uv sync`
