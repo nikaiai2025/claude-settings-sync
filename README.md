@@ -10,10 +10,12 @@
 対象:
 - `Skills\`
 - `Agents\`
+- `hooks\`
 - `AGENTS.md`
 - `CLAUDE.md`
+- `settings.json`
 
-※ `settings.json` はマシン固有の設定が含まれるため同期対象外です。
+※ `settings.json` はマシン固有の設定が含まれる可能性があるため、単純コピーで同期します。
 
 ## ルート解決（.claude の場所）
 以下の順で決定します:

@@ -15,8 +15,8 @@ REPO_ROOT = Path(__file__).resolve().parent
 DATA_ROOT = REPO_ROOT / "data"
 BACKUP_ROOT = REPO_ROOT / "backups"
 
-TARGET_DIRS = ["Skills", "Agents"]
-TARGET_FILES = ["AGENTS.md", "CLAUDE.md"]
+TARGET_DIRS = ["Skills", "Agents", "hooks"]
+TARGET_FILES = ["AGENTS.md", "CLAUDE.md", "settings.json"]
 
 
 def find_claude_root(explicit: str | None) -> Path:

@@ -8,10 +8,11 @@
 ルート: 端末ごとに変わるため自動検出/明示指定する
 - `Skills\`（フォルダ）
 - `Agents\`（フォルダ）
+- `hooks\`（フォルダ）
 - `AGENTS.md`（ファイル）
 - `CLAUDE.md`（プロジェクト固有設定など）
+- `settings.json`（単純コピーで同期。マシン固有の設定が含まれる場合は手動調整が必要）
 
-※ `settings.json` はマシン固有の設定が含まれるため、同期対象外とする。
 ※ `__pycache__` ディレクトリおよびその中身は、同期対象外とする。
 
 ## ルート解決ルール（.claude の場所が端末で違う場合）
@@ -28,14 +29,18 @@ repo/
   data/
     Skills/
     Agents/
+    hooks/
     AGENTS.md
     CLAUDE.md
+    settings.json
   backups/
     2026-02-08_143012_HOSTNAME/
       Skills/
       Agents/
+      hooks/
       AGENTS.md
       CLAUDE.md
+      settings.json
 ```
 
 ## 同期の基本方針
