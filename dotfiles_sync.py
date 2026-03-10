@@ -186,15 +186,29 @@ def cmd_status(claude_root: Path) -> int:
         print("No target files found in local or repo.")
         return 0
 
-    for s in statuses:
-        if s.status == "SAME":
-            continue
+    non_same = [s for s in statuses if s.status != "SAME"]
+    if not non_same:
+        print("差分なし")
+        return 0
+
+    local_map = collect_local_files(claude_root)
+    repo_map = collect_repo_files(DATA_ROOT)
+
+    def format_mtime(p: Path | None) -> str:
+        if p and p.exists():
+            return datetime.fromtimestamp(p.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+        return "N/A"
+
+    for s in non_same:
         if s.status == "DIFF":
+            lm = format_mtime(local_map.get(s.rel_path))
+            rm = format_mtime(repo_map.get(s.rel_path))
             print(f"{s.status:11} {s.rel_path} ({s.similarity})")
+            print(f"            Local: {lm} / Git: {rm}")
         else:
             print(f"{s.status:11} {s.rel_path}")
 
-    diff_items = [s for s in statuses if s.status == "DIFF"]
+    diff_items = [s for s in non_same if s.status == "DIFF"]
     if not diff_items:
         return 0
 
