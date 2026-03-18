@@ -7,7 +7,7 @@ if echo "$COMMAND" | grep -q 'rm -r*'; then
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: "致命的なダメージが起こりえる削除コマンドは禁止。類似コマンドを使って回避するのも禁止。このフックを削除するのも禁止。ただちに現在の作業を中断して停止し、この後の対応は人間に確認すること"
+      permissionDecisionReason: "致命的なダメージが起こりえる削除コマンドは禁止。類似コマンドを使って回避するのも禁止。このフックを削除するのも禁止。削除の代わりに、プロジェクト直下の `ゴミ箱` ディレクトリに移動させること（無ければ作る。同名ディレクトリがあったら連番を振る）"
     }
   }'
 else
