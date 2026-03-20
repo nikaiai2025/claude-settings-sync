@@ -18,6 +18,9 @@ BACKUP_ROOT = REPO_ROOT / "backups"
 TARGET_DIRS = ["Skills", "Agents", "hooks"]
 TARGET_FILES = ["AGENTS.md", "CLAUDE.md", "settings.json"]
 
+SETTINGS_FILENAME = "settings.json"
+HOME_PLACEHOLDER = "{{HOME}}"
+
 
 def find_claude_root(explicit: str | None) -> Path:
     if explicit:
@@ -69,7 +72,9 @@ def line_similarity(a_path: Path, b_path: Path) -> str:
     matcher = SequenceMatcher(a=a_lines, b=b_lines)
     identical = sum(block.size for block in matcher.get_matching_blocks())
     total = max(len(a_lines), len(b_lines))
-    return f"{identical}/{total} lines identical" if total > 0 else "0/0 lines identical"
+    return (
+        f"{identical}/{total} lines identical" if total > 0 else "0/0 lines identical"
+    )
 
 
 def collect_local_files(root: Path) -> Dict[Path, Path]:
@@ -129,7 +134,25 @@ def get_status(claude_root: Path) -> List[FileStatus]:
             statuses.append(FileStatus(rel, "REMOTE_ONLY"))
             continue
         if local and repo:
-            if sha256_file(local) == sha256_file(repo):
+            if rel.name == SETTINGS_FILENAME:
+                # settings.json はホームパスを正規化した内容で比較する
+                local_text = normalize_settings(local.read_text(encoding="utf-8"))
+                repo_text = repo.read_text(encoding="utf-8")
+                if local_text == repo_text:
+                    statuses.append(FileStatus(rel, "SAME"))
+                else:
+                    local_lines = local_text.splitlines()
+                    repo_lines = repo_text.splitlines()
+                    matcher = SequenceMatcher(a=repo_lines, b=local_lines)
+                    identical = sum(b.size for b in matcher.get_matching_blocks())
+                    total = max(len(local_lines), len(repo_lines))
+                    sim = (
+                        f"{identical}/{total} lines identical"
+                        if total > 0
+                        else "0/0 lines identical"
+                    )
+                    statuses.append(FileStatus(rel, "DIFF", sim))
+            elif sha256_file(local) == sha256_file(repo):
                 statuses.append(FileStatus(rel, "SAME"))
             else:
                 sim = line_similarity(local, repo)
@@ -144,6 +167,53 @@ def ensure_parent(path: Path) -> None:
 def copy_file(src: Path, dst: Path) -> None:
     ensure_parent(dst)
     shutil.copy2(src, dst)
+
+
+def _home_variants() -> List[str]:
+    """ホームパスのバリエーションを長い順に返す（JSONエスケープ、Win、Unix）。"""
+    home = str(Path.home())
+    variants = []
+    # JSON内のエスケープ済み形式（\ → \\）— 最長なので先にマッチさせる
+    json_escaped = home.replace("\\", "\\\\")
+    if json_escaped != home:
+        variants.append(json_escaped)
+    # Windows形式（バックスラッシュ）
+    variants.append(home.replace("/", "\\"))
+    # Unix形式（スラッシュ）
+    unix = home.replace("\\", "/")
+    if unix not in variants:
+        variants.append(unix)
+    return variants
+
+
+def normalize_settings(text: str) -> str:
+    """ローカルのホームディレクトリパスを {{HOME}} プレースホルダーに置換する。"""
+    for variant in _home_variants():
+        text = text.replace(variant, HOME_PLACEHOLDER)
+    return text
+
+
+def restore_settings(text: str) -> str:
+    """{{HOME}} プレースホルダーをローカルのホームディレクトリパスに復元する。
+    settings.json はJSON形式のため、バックスラッシュをエスケープして復元する。
+    """
+    home = str(Path.home())
+    home_for_json = home.replace("\\", "\\\\")
+    return text.replace(HOME_PLACEHOLDER, home_for_json)
+
+
+def copy_settings_normalized(src: Path, dst: Path) -> None:
+    """settings.json をホームパス正規化してコピーする（local -> git 方向）。"""
+    ensure_parent(dst)
+    text = src.read_text(encoding="utf-8")
+    dst.write_text(normalize_settings(text), encoding="utf-8")
+
+
+def copy_settings_restored(src: Path, dst: Path) -> None:
+    """settings.json の {{HOME}} を復元してコピーする（git -> local 方向）。"""
+    ensure_parent(dst)
+    text = src.read_text(encoding="utf-8")
+    dst.write_text(restore_settings(text), encoding="utf-8")
 
 
 def backup_files(files: Iterable[Tuple[Path, Path]]) -> Path:
@@ -196,7 +266,9 @@ def cmd_status(claude_root: Path) -> int:
 
     def format_mtime(p: Path | None) -> str:
         if p and p.exists():
-            return datetime.fromtimestamp(p.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+            return datetime.fromtimestamp(p.stat().st_mtime).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
         return "N/A"
 
     for s in non_same:
@@ -232,7 +304,11 @@ def cmd_collect(claude_root: Path) -> int:
             to_copy.append((src, dst))
 
     for src, dst in to_copy:
-        copy_file(src, dst)
+        if src.name == SETTINGS_FILENAME:
+            # settings.json はホームパスを {{HOME}} に正規化して保存する
+            copy_settings_normalized(src, dst)
+        else:
+            copy_file(src, dst)
 
     print(f"Collected {len(to_copy)} files into repo data/ (LOCAL_ONLY + DIFF).")
     return 0
@@ -272,8 +348,11 @@ def run_git_commit_push() -> None:
 
     print("Git add/commit/push completed.")
 
+
 def run_git_pull() -> bool:
-    pull = subprocess.run(["git", "pull"], cwd=REPO_ROOT, text=True, capture_output=True)
+    pull = subprocess.run(
+        ["git", "pull"], cwd=REPO_ROOT, text=True, capture_output=True
+    )
     if pull.returncode != 0:
         print("git pull failed:")
         print(pull.stderr.strip())
@@ -310,7 +389,11 @@ def cmd_apply(claude_root: Path) -> int:
         print("No backups created (no local files to overwrite).")
 
     for src, dst in to_copy:
-        copy_file(src, dst)
+        if src.name == SETTINGS_FILENAME:
+            # settings.json は {{HOME}} をローカルのホームパスに復元して保存する
+            copy_settings_restored(src, dst)
+        else:
+            copy_file(src, dst)
 
     print(f"Applied {len(to_copy)} files from repo data/ to local.")
     return 0
@@ -363,7 +446,9 @@ def cmd_delete_remote(claude_root: Path) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Sync Claude Code settings via Git repo.")
+    parser = argparse.ArgumentParser(
+        description="Sync Claude Code settings via Git repo."
+    )
     parser.add_argument(
         "--root",
         help="Claude settings root (overrides CLAUDE_HOME). Example: C:\\Users\\user\\.claude",
@@ -373,7 +458,9 @@ def main() -> int:
     sub.add_parser("status", help="Show status between local and repo.")
     # diff command removed; status now supports optional detailed diff display
     sub.add_parser("local_to_git", help="Copy LOCAL_ONLY + DIFF from local to repo.")
-    sub.add_parser("git_to_local", help="Copy REMOTE_ONLY + DIFF from repo to local (with backup).")
+    sub.add_parser(
+        "git_to_local", help="Copy REMOTE_ONLY + DIFF from repo to local (with backup)."
+    )
     sub.add_parser(
         "delete_remote",
         help="Delete REMOTE_ONLY files from repo data/ (maintenance, with confirmation).",

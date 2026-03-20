@@ -1,85 +1,63 @@
-# Claude Code Sync（運用向け）
+# Claude Code Sync
 
-## 目的
-複数の Windows 端末に散在する Claude Code 設定を Git で一元管理し、
-ローカル更新の消失を防ぎながら同期します。
+Claude Code の設定（`~/.claude/` 配下）を複数端末間で Git 同期するツールです。
+ユーザー名が端末間で異なっていても、`settings.json` 内のパスは自動で正規化されます。
 
 ## 管理対象
-ルートディレクトリ: `.claude`（端末によって場所が異なる）
 
-対象:
-- `Skills\`
-- `Agents\`
-- `hooks\`
-- `AGENTS.md`
-- `CLAUDE.md`
-- `settings.json`
+| 対象 | 説明 |
+|---|---|
+| `Skills/`, `Agents/`, `hooks/` | カスタム定義ファイル |
+| `CLAUDE.md`, `AGENTS.md` | グローバル指示ファイル |
+| `settings.json` | 権限・hooks・MCP サーバー等の設定 |
 
-※ `settings.json` はマシン固有の設定が含まれる可能性があるため、単純コピーで同期します。
+## 使い方
 
-## ルート解決（.claude の場所）
-以下の順で決定します:
+```powershell
+python dotfiles_sync.py status        # 差分を確認
+python dotfiles_sync.py local_to_git  # ローカル → Git に反映
+python dotfiles_sync.py git_to_local  # Git → ローカルに反映
+python dotfiles_sync.py delete_remote # Git 側の不要ファイルを削除
+```
+
+**基本の運用サイクル:**
+
+1. **作業開始時** → `status` → `git_to_local` で最新化
+2. **作業終了時** → `status` → `local_to_git` で反映
+
+`status` で `DIFF` が出たら、どちらが正しいかを判断してからコマンドを選びます。
+迷う場合は `status` 実行後のプロンプトで詳細差分を表示できます。
+
+## settings.json のパス正規化
+
+`settings.json` 内のホームディレクトリパスは、Git 保存時に `{{HOME}}` に置換され、
+ローカル復元時に各端末の `Path.home()` で展開されます。
+
+### 例: alice が `local_to_git` → bob が `git_to_local` した場合
+
+| | alice（端末A） | bob（端末B） |
+|---|---|---|
+| **Before** | `C:\Users\alice\anaconda3\fastmcp.exe` | `C:\Users\bob\anaconda3\fastmcp.exe` |
+| **After** | 変化なし | `C:\Users\bob\anaconda3\fastmcp.exe` |
+
+パス中のユーザー名は各端末に合わせて自動復元されます。
+
+## 制限事項
+
+- **`settings.json` はファイル単位の全上書きです。** キー単位のマージは行いません。
+  `git_to_local` を実行すると、Git 側の内容でローカルが完全に置き換わります。
+- **端末固有の設定は保持されません。** 例えば「この端末だけに特定の MCP サーバーを追加したい」場合、
+  他端末から `git_to_local` するとその設定は消えます。
+- ホームディレクトリ配下にないパス（例: `D:\tools\...`）は正規化の対象外です。
+  端末間でパス構造が異なる場合は手動調整が必要です。
+- `git_to_local` は上書き前にバックアップを `backups/` に作成します。
+  `local_to_git` は Git 履歴があるためバックアップ不要です。
+
+## 詳細設定
+
+`.claude` の場所が既定と異なる場合、以下の順で解決します:
+
 1. `--root` 引数
 2. 環境変数 `CLAUDE_HOME`
-3. 自動検出 `%USERPROFILE%\.claude`
-4. 既定 `~/.claude`（`Path.home() / ".claude"`）
-
-## コマンド
-このリポジトリ直下で実行:
-
-```powershell
-python dotfiles_sync.py status
-python dotfiles_sync.py local_to_git
-python dotfiles_sync.py git_to_local
-python dotfiles_sync.py delete_remote
-```
-
-## 判断フロー（最重要）
-`DIFF` は「競合」です。どちらが正かを必ず判断します。
-
-1. **端末を移動した直後**
-   - `status`
-   - `DIFF` があれば **git_to_local**（Git → ローカル）で最新化
-2. **ローカルで編集した後**
-   - `status`
-   - `DIFF` があれば **local_to_git**（ローカル → Git）で反映
-
-迷う場合は `status` 実行後に表示されるプロンプトで詳細差分を表示します。
-
-## 各コマンドの挙動
-- `status`: `LOCAL_ONLY` / `REMOTE_ONLY` / `DIFF` / `SAME` を表示
-  - `DIFF` は `70/100 lines identical` のような一致率付き
-- `local_to_git`: `LOCAL_ONLY + DIFF` を Git 側へ上書き
-  - ローカルが正しいと判断した場合に使う
-  - Git 履歴が残るためバックアップ不要
-  - 実行後に `git add/commit/push` を自動実行（コミットメッセージはタイムスタンプ）
-- `git_to_local`: `REMOTE_ONLY + DIFF` をローカルへ上書き
-  - Git が正しいと判断した場合に使う
-  - 上書き前にバックアップを作成
-  - 実行前に `git pull` を自動実行
-- `delete_remote`（メンテナンス用）: `REMOTE_ONLY` を `data/` から削除
-  - 通常運用では使わない（不要ファイル整理時のみ）
-  - 実行時に削除対象ファイル一覧を表示し、`y/n` で確認
-  - 実行後に `git add/commit/push` を自動実行
-
-## バックアップ（git_to_local のみ）
-上書き前にローカルを退避:
-
-```
-backups/<timestamp>_<hostname>/...
-```
-
-`backups/` は Git から除外済み（`.gitignore`）。
-
-## 典型的な安全運用
-1. **作業開始時** → `status` → 通常は `git_to_local`
-2. **作業終了時** → `status` → 通常は `local_to_git`
-
-## 補足
-- `data/` が未作成でも `local_to_git` が生成する
-- 端末ごとに `.claude` の場所を固定する例:
-
-```powershell
-$env:CLAUDE_HOME="D:\Claude\.claude"
-python dotfiles_sync.py status
-```
+3. `%USERPROFILE%\.claude`（自動検出）
+4. `~/.claude`（既定）
