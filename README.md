@@ -1,5 +1,10 @@
 # Claude Settings Sync
 
+Sync your Claude Code settings (`~/.claude/`) across multiple machines via Git.
+Home directory paths in `settings.json` are automatically normalized, so it works even when usernames differ between machines.
+
+---
+
 Claude Code の設定（`~/.claude/` 配下）を複数端末間で Git 同期するツールです。
 ユーザー名が端末間で異なっていても、`settings.json` 内のパスは自動で正規化されます。
 
