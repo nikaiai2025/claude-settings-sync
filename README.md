@@ -3,10 +3,32 @@
 Sync your Claude Code settings (`~/.claude/`) across multiple machines via Git.
 Home directory paths in `settings.json` are automatically normalized, so it works even when usernames differ between machines.
 
+### Why not just `git init ~/.claude`?
+
+`~/.claude/` contains files you should never commit: `history.jsonl` (large), `.credentials.json` (secrets), `sessions/`, `cache/`, `telemetry/`, etc.
+Managing this with `.gitignore` negation rules is fragile and risks leaking credentials.
+This tool uses an **allowlist approach** — only explicitly specified files are synced.
+
 ---
 
 Claude Code の設定（`~/.claude/` 配下）を複数端末間で Git 同期するツールです。
 ユーザー名が端末間で異なっていても、`settings.json` 内のパスは自動で正規化されます。
+
+## なぜ `~/.claude/` を直接 Git 管理しないのか
+
+`~/.claude/` には同期したくないファイルが大量にあります：
+
+| 同期したい | 同期したくない |
+|---|---|
+| `Skills/`, `Agents/`, `hooks/` | `history.jsonl`（巨大な会話履歴） |
+| `CLAUDE.md`, `settings.json` | `.credentials.json`（認証情報） |
+| | `sessions/`, `cache/`, `telemetry/` 等 |
+
+`.gitignore` で除外する方法もありますが、否定ルールのネスト管理が煩雑で、
+Claude Code のアップデートで内部ファイルが増えるたびに対応が必要になります。
+また、誤って認証情報をコミットするリスクもあります。
+
+このツールは**許可リスト方式**で、指定したファイルだけを安全に同期します。
 
 ## 管理対象
 
