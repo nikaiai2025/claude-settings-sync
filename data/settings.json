@@ -50,16 +50,7 @@
     ]
   },
   "autoUpdatesChannel": "latest",
-  "mcpServers": {
-    "task-manager": {
-      "command": "C:\\Users\\user\\anaconda3\\Scripts\\fastmcp.exe",
-      "args": [
-        "run",
-        "C:\\Users\\user\\OneDrive\\ドキュメント\\ClaudeSandBox\\mcp_task_manager.py"
-      ],
-      "env": {}
-    }
-  },
+  "mcpServers": {},
   "model": "opus",
   "effortLevel": "max"
 }
