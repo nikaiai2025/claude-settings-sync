@@ -1,8 +1,6 @@
 {
   "permissions": {
     "allow": [
-      "mcp__pencil",
-      "*",
       "Read",
       "Edit",
       "Write",
@@ -13,13 +11,15 @@
       "WebSearch",
       "WebFetch",
       "Skill",
-      "NotebookEdit"
+      "NotebookEdit",
+      "mcp__pencil"
     ]
   },
+  "model": "opus[1m]",
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Bash|PowerShell",
         "hooks": [
           {
             "type": "command",
@@ -34,23 +34,26 @@
         "hooks": [
           {
             "type": "command",
-            "command": "FILE=$(jq -r '.tool_input.file_path') && [[ $FILE == *.ts || $FILE == *.tsx || $FILE == *.js || $FILE == *.jsx ]] && biome format --write $FILE && biome check --fix $FILE || true"
+            "command": "FILE=$(jq -r '.tool_input.file_path'); case \"$FILE\" in *.py) ruff check --fix \"$FILE\" && ruff format \"$FILE\";; esac; exit 0"
           }
         ]
-      },
+      }
+    ],
+    "Stop": [
       {
-        "matcher": "Edit|Write",
         "hooks": [
           {
             "type": "command",
-            "command": "FILE=$(jq -r '.tool_input.file_path') && [[ $FILE == *.py ]] && ruff check --fix $FILE && ruff format $FILE || true"
+            "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File \"{{HOME}}\\Documents\\hobby\\voice_CLI\\claude-tts\\speak.ps1\""
           }
         ]
       }
     ]
   },
+  "effortLevel": "xhigh",
   "autoUpdatesChannel": "latest",
-  "mcpServers": {},
-  "model": "opus",
-  "effortLevel": "max"
+  "tui": "fullscreen",
+  "skipWorkflowUsageWarning": true,
+  "switchModelsOnFlag": true,
+  "agentPushNotifEnabled": true
 }
